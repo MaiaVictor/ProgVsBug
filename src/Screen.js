@@ -51,6 +51,10 @@ module.exports = (function(){
     return screen;
   };
 
+  function drawImage(x, y, image, screen){
+    screen.context.drawImage(image, x, y);
+  };
+
   // *Screen -> Screen
   function clear(screen, col){
     screen.colorBuffer32.fill(col);
@@ -60,6 +64,7 @@ module.exports = (function(){
     Screen: Screen,
     drawBuffer: drawBuffer,
     drawDrawers: drawDrawers,
+    drawImage: drawImage,
     draw: draw,
     clear: clear};
 })();

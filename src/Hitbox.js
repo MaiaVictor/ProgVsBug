@@ -1,10 +1,13 @@
 module.exports = (function(){
+  var Drawers = require("./Drawers.js");
+
   var abs = Math.abs;
   var floor = Math.floor;
   var sqrt = Math.sqrt;
 
-  function Hitbox(dim, pos, vel, fall){
+  function Hitbox(id, dim, pos, vel, fall){
     return {
+      id:id,
       dim:dim,
       pos:pos,
       vel:vel,
@@ -12,72 +15,79 @@ module.exports = (function(){
   };
 
   function drawer(hitbox, c){
-    return function(w, h, col){
-      var hx = floor(hitbox.pos.x), hy = floor(hitbox.pos.y);
-      var hw = hitbox.dim.x, hh = hitbox.dim.y;
-      for (var y=-hh; y<=hh; ++y)
-        for (var x=-hw; x<=hw; ++x)
-          col[(hy+y)*w+(hx+x)] = c;
-      return col;
-    };
+    return Drawers.rectangle(hitbox.pos.x, hitbox.pos.y, hitbox.dim.x, hitbox.dim.y, c);
   };
 
-  var spaceWidth = 2048;
-  var spaceHeight = 2048;
-  var space = new Uint8Array(spaceWidth * spaceHeight);
-  function tick(dt, boxes){
-    for (var i=0, l=boxes.length; i<l; ++i){
-      var box = boxes[i];
+  function tick(dt, space, spaceWidth, spaceHeight, box){
+    var w  = box.dim.x, h  = box.dim.y;
+    var x  = box.pos.x, y  = box.pos.y;
+    var vx = box.vel.x, vy = box.vel.y;
+    var sw = spaceWidth;
+    var id = box.id;
 
-      var w  = box.dim.x, h  = box.dim.y;
-      var x  = box.pos.x, y  = box.pos.y;
-      var vx = box.vel.x, vy = box.vel.y;
-      var sw = spaceWidth;
+    // Integrate velocity
+    vy += dt * box.fall;
 
-      // Integrate velocity
-      vy += dt * box.fall;
+    // Remove from space
+    for (var px=-w; px<w; ++px)
+      space[(floor(y)-h) * sw + (floor(x)+px)] = 0,
+      space[(floor(y)+h) * sw + (floor(x)+px)] = 0;
+    for (var py=-h; py<h; ++py)
+      space[(floor(y)+py) * sw + (floor(x)-w)] = 0,
+      space[(floor(y)+py) * sw + (floor(x)+w)] = 0;
 
-      // Remove from space
-      for (var px=-w; px<w; ++px)
-        space[(floor(y)-h) * sw + (floor(x)+px)] = 0,
-        space[(floor(y)+h) * sw + (floor(x)+px)] = 0;
-      for (var py=-h; py<h; ++py)
-        space[(floor(y)+py) * sw + (floor(x)-w)] = 0,
-        space[(floor(y)+py) * sw + (floor(x)+w)] = 0;
-
-      // Integrate position
-      for (var k=0; k<=1; ++k){
-        for (var t=0, ts=Math.abs((k?vx:vy)*dt); t<ts; ++t){
-          var spd = Math.min(ts - t, 1) * Math.sign(k?vx:vy);
-          if (k) x += spd;
-          else   y += spd;
-          for (var m=0; m<=1; ++m){
-            for (var p=(m?-w:-h); p<(m?w:h); ++p){
-              if ( space[(floor(y)+(m?-h:p))*sw + (floor(x)+(m?p:-w))]
-                || space[(floor(y)+(m? h:p))*sw + (floor(x)+(m?p: w))]){
-                if (k) x -= spd;
-                else   y -= spd;
-              };
+    // Integrate position
+    var collisions = {};
+    for (var k=0; k<=1; ++k){
+      for (var t=0, ts=Math.abs((k?vx:vy)*dt); t<ts; ++t){
+        var spd = Math.min(ts - t, 1) * Math.sign(k?vx:vy);
+        if (k) x += spd;
+        else   y += spd;
+        for (var m=0; m<=1; ++m){
+          for (var p=(m?-w:-h); p<(m?w:h); ++p){
+            if ( space[(floor(y)+(m?-h:p))*sw + (floor(x)+(m?p:-w))]
+              || space[(floor(y)+(m? h:p))*sw + (floor(x)+(m?p: w))]){
+              collisions[space[(floor(y)+(m?-h:p))*sw + (floor(x)+(m?p:-w))]] = true;
+              collisions[space[(floor(y)+(m? h:p))*sw + (floor(x)+(m?p: w))]] = true;
+              if (k) x -= spd, vx = 0;
+              else   y -= spd, vy = 0;
             };
           };
         };
       };
-
-      // Add to space
-      for (var px=-w; px<w; ++px)
-        space[(floor(y)-h) * sw + (floor(x)+px)] = 1,
-        space[(floor(y)+h) * sw + (floor(x)+px)] = 1;
-      for (var py=-h; py<h; ++py)
-        space[(floor(y)+py) * sw + (floor(x)-w)] = 1,
-        space[(floor(y)+py) * sw + (floor(x)+w)] = 1;
-
-      // Save
-      box.pos.x = x;
-      box.pos.y = y;
-      box.vel.x = vx;
-      box.vel.y = vy;
     };
-    return boxes;
+
+    // Add to space
+    for (var px=-w; px<w; ++px)
+      space[(floor(y)-h) * sw + (floor(x)+px)] = id,
+      space[(floor(y)+h) * sw + (floor(x)+px)] = id;
+    for (var py=-h; py<h; ++py)
+      space[(floor(y)+py) * sw + (floor(x)-w)] = id,
+      space[(floor(y)+py) * sw + (floor(x)+w)] = id;
+
+    // Save
+    box.pos.x = x;
+    box.pos.y = y;
+    box.vel.x = vx;
+    box.vel.y = vy;
+
+    // Returns collisions
+    delete collisions[0];
+    return collisions;
+  };
+
+  function destroy(box, space, spaceWidth, spaceHeight){
+    var w  = box.dim.x, h  = box.dim.y;
+    var x  = box.pos.x, y  = box.pos.y;
+    var vx = box.vel.x, vy = box.vel.y;
+    var sw = spaceWidth;
+    // Remove from space
+    for (var px=-w; px<w; ++px)
+      space[(floor(y)-h) * sw + (floor(x)+px)] = 0,
+      space[(floor(y)+h) * sw + (floor(x)+px)] = 0;
+    for (var py=-h; py<h; ++py)
+      space[(floor(y)+py) * sw + (floor(x)-w)] = 0,
+      space[(floor(y)+py) * sw + (floor(x)+w)] = 0;
   };
 
 
@@ -129,5 +139,6 @@ module.exports = (function(){
   return {
     Hitbox: Hitbox,
     drawer: drawer,
+    destroy: destroy,
     tick: tick};
 })();

@@ -1,12 +1,22 @@
 module.exports = (function(){
-  var keyboard = [];
-  for (var i=0; i<255; ++i)
-    keyboard[String.fromCharCode(i)] = 0;
+  var down = [], last = [], pressed = [], released = [];
+  for (var i=0; i<255; ++i){
+    var k = String.fromCharCode(i);
+    down[k] = last[k] = pressed[k] = released[k] = 0;
+  };
   document.onkeypress = function(e){
-    keyboard[String.fromCharCode(e.keyCode).toLowerCase()] = 1;
+    down[String.fromCharCode(e.keyCode).toLowerCase()] = 1;
   };
   document.onkeyup = function(e){
-    keyboard[String.fromCharCode(e.keyCode).toLowerCase()] = 0;
+    down[String.fromCharCode(e.keyCode).toLowerCase()] = 0;
   };
-  return keyboard;
+  function tick(){
+    for (var i=0; i<255; ++i){
+      var k = String.fromCharCode(i);
+      pressed[k]  = !last[k] &&  down[k];
+      released[k] =  last[k] && !down[k];
+      last[k]     = down[k];
+    };
+  };
+  return {down: down, pressed: pressed, released: released, tick: tick};
 });
